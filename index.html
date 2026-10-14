@@ -1515,7 +1515,7 @@ const Store={mode:'off',uid:null,token:null,
   const d=this._db(),all=Object.values(d.edges),depth={[this.uid]:0},parent={},name={},links=[];let q=[this.uid];
   while(q.length){const u=q.shift();if(depth[u]>=6)continue;for(const e of all){const v=e.from===u?e.to:e.to===u?e.from:null;if(!v||depth[v]!==undefined||Object.keys(depth).length>=400)continue;depth[v]=depth[u]+1;parent[v]=u;name[v]=mask(d.profiles[v]?.name);q.push(v);}}
   for(const e of all){const v=e.from===this.uid?e.to:e.to===this.uid?e.from:null;if(v)links.push({to:v,name:d.profiles[v]?.name||'지인',cat:e.cat,...e.result,report:e.reports?.[this.uid]});}
-  return {links,net:{me:this.uid,depth,parent,name,more:0,edges:all.filter(e=>depth[e.from]!==undefined&&depth[e.to]!==undefined).map(e=>({from:e.from,to:e.to}))}};
+  return {links,net:{me:this.uid,depth,parent,name,more:0,edges:all.filter(e=>depth[e.from]!==undefined&&depth[e.to]!==undefined).map(e=>({from:e.from,to:e.to,score:e.result&&e.result.score}))}};
  },
  async disconnect(uid){if(this.mode==='supabase')return this.rpc('disconnect',{uid});const d=this._db();for(const [k,e]of Object.entries(d.edges))if([e.from,e.to].includes(this.uid)&&[e.from,e.to].includes(uid))delete d.edges[k];this._save(d);},
  async recovery(reset){if(this.mode!=='supabase')throw Error('체험 모드에서는 복구 링크를 쓸 수 없어요.');return this.rpc('recovery',{reset:!!reset});},
@@ -1537,11 +1537,11 @@ async function refreshNet(){if(!S.me||S.demo||!Store.uid)return;
 function demoNet(){const me='demo-me',fam='김이박최정강조윤장임한오서신권황안송류홍'.split('');let seed=11;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
   const depth={[me]:0},parent={},name={},edges=[];DEMO_FR.forEach(f=>{depth[f.uid]=1;parent[f.uid]=me;});let id=0;
   const grow=(u,d)=>{if(d>4)return;const n=d===2?1+Math.floor(rnd()*3.4):Math.floor(rnd()*(d===3?2.6:1.8));
-    for(let k=0;k<n;k++){const v='dn'+(id++);depth[v]=d;parent[v]=u;name[v]=fam[Math.floor(rnd()*fam.length)]+'**';edges.push({from:u,to:v});grow(v,d+1);}};
+    for(let k=0;k<n;k++){const v='dn'+(id++);depth[v]=d;parent[v]=u;name[v]=fam[Math.floor(rnd()*fam.length)]+'**';edges.push({from:u,to:v,score:Math.floor(rnd()*101)});grow(v,d+1);}};
   DEMO_FR.forEach(f=>grow(f.uid,2));
   const ids=Object.keys(depth).filter(u=>depth[u]>=2);
-  for(let k=0;k<4;k++){const x=ids[Math.floor(rnd()*ids.length)],y=ids[Math.floor(rnd()*ids.length)];if(x!==y&&parent[y]!==x&&parent[x]!==y)edges.push({from:x,to:y});}
-  edges.push({from:DEMO_FR[1].uid,to:DEMO_FR[3].uid});
+  for(let k=0;k<4;k++){const x=ids[Math.floor(rnd()*ids.length)],y=ids[Math.floor(rnd()*ids.length)];if(x!==y&&parent[y]!==x&&parent[x]!==y)edges.push({from:x,to:y,score:Math.floor(rnd()*101)});}
+  edges.push({from:DEMO_FR[1].uid,to:DEMO_FR[3].uid,score:compat(DEMO_FR[1],DEMO_FR[3],'friend').score});
   return {me,depth,parent,name,edges,more:0};}
 async function linkInviter(){const inv=S.invite;if(!inv||!S.me||inv.u===Store.uid)return false;
  const o=invPerson(inv),c=compat(S.me,o,inv.c);await Store.connect(inv,{score:c.score,label:c.label,sj:c.sj,ps:c.ps,reportMe:c.report,reportOther:relationReport(o,S.me,inv.c)});
@@ -1814,12 +1814,12 @@ ${link}`;
    :`<p class="muted small">${S.netReady?'아직 직접 연결된 사람이 없어요. 초대 링크를 보내 보세요.':'연결을 불러오는 중이에요…'}</p>`}
    ${S.delAsk!=null&&S.friends[S.delAsk]?`<div class="confirm"><p>${esc(S.friends[S.delAsk].name)}님과의 연결을 끊을까요? 둘의 점수가 결 지도에서 사라집니다.</p><div class="row"><button class="btn quiet" data-act="delno" style="flex:1">취소</button><button class="btn" data-act="delyes" style="flex:1">끊기</button></div></div>`:''}</div>
   <div class="card"><div class="row between"><h3>건너 아는 사람 · 구경만 가능</h3><span class="chip">${deep}명</span></div>
-   <p class="muted small">${deep?`연결된 사람들이 다시 링크를 보내 ${deep}명까지 퍼졌어요. 결 지도에서 성만 가려서 보여요.`:'연결된 사람이 또 링크를 보내면, 결 지도에 가지가 새로 뻗어요. 이름은 성만 보이고 점수는 비공개예요.'}</p>
+   <p class="muted small">${deep?`연결된 사람들이 다시 링크를 보내 ${deep}명까지 퍼졌어요. 결 지도에서 성만 가려서 보여요.`:'연결된 사람이 또 링크를 보내면, 결 지도에 가지가 새로 뻗어요. 이름은 성만 보이고, 둘 사이 궁합 점수는 보여요.'}</p>
    <button class="btn quiet" data-go="map">결 지도 보기</button></div>
   ${invs.length?`<div class="card"><div class="row between"><h3>나를 초대한 사람</h3><span class="chip">${invs.length}명</span></div>
    <div class="plist">${invs.map(f=>`<button class="pitem" data-inv="${esc(f.uid)}">${avatar(f)}<div><b>${esc(f.name)}</b> <span class="tag cat-${CATS[f.cat].c}">${CATS[f.cat].k}</span><br><span class="small muted">${esc(f.edge.label||'')}</span></div><span class="score">${f.edge.score}<small>점</small></span></button>`).join('')}</div>
    <p class="note">나를 초대한 사람도 직접 연결된 지인으로 지도에 표시됩니다.</p></div>`:''}
-  <div class="card"><h3>내 정보 관리</h3><p class="small muted">생년월일시와 성향 응답은 나만 볼 수 있어요. 직접 연결된 사람에게는 이름·궁합 점수·칭호·관계 해설, 간접 연결된 사람에게는 가린 이름과 연결선만 보입니다.</p>
+  <div class="card"><h3>내 정보 관리</h3><p class="small muted">생년월일시와 성향 응답은 나만 볼 수 있어요. 직접 연결된 사람에게는 이름·궁합 점수·칭호·관계 해설, 간접 연결된 사람에게는 가린 이름과 궁합 점수만 보입니다(칭호·해설은 비공개).</p>
    <h3 style="margin-top:16px">다른 기기에서 이어 보기</h3><p class="small muted">결과는 지금 쓰는 기기·브라우저에 묶여 있어요. 같은 브라우저로 이 주소에 다시 오면 그대로 열리고, 카톡에서 처음 열었다면 다음에도 카톡에서 열어야 해요. 폰을 바꾸거나 다른 브라우저에서 보려면 복구 링크를 만들어 나만 보는 곳에 저장해 두세요.</p>
    ${Store.mode!=='supabase'?'<p class="note">복구 링크는 서버에 연결된 상태(ONLINE)에서만 만들 수 있어요.</p>':S.recLink?`<textarea id="reclink" class="code" readonly rows="2">${esc(S.recLink)}</textarea><div class="row" style="flex-wrap:nowrap"><button class="btn" data-act="reccopy" style="flex:1">복구 링크 복사</button><button class="btn quiet" data-act="recreset" style="flex:1">새로 만들기</button></div><p class="note">이 링크를 가진 사람은 누구나 내 결과를 열 수 있어요. 카톡 ‘나와의 채팅’처럼 나만 보는 곳에 저장하세요. 새로 만들면 예전 링크는 바로 무효가 됩니다. 다른 기기에서 복구하면 결과가 그 기기로 옮겨지고, 이 기기에서는 처음 화면이 나와요.</p>`:'<button class="btn quiet" data-act="recmake">복구 링크 만들기</button>'}
    ${S.wipeAsk?`<div class="confirm"><p>내 정보와 모든 연결을 지울까요? 되돌릴 수 없습니다.</p><div class="row"><button class="btn quiet" data-act="wipeno" style="flex:1">취소</button><button class="btn" data-act="wipeyes" style="flex:1">모두 지우기</button></div></div>`:'<button class="btn quiet" data-act="wipe">내 정보와 연결 모두 지우기</button>'}</div>
@@ -1830,7 +1830,7 @@ function inviteCard(){if(S.inviteError)return `<div class="banner">${esc(S.invit
   if(S.me&&S.friends.some(f=>f.uid===inv.u))return '';
   return `<div class="card invite-card"><div class="invite invite-hm">${halmi('inv-halmi')}<span class="tag cat-${c.c}" style="align-self:flex-start">${c.k} 궁합</span><h2>${esc(inv.n)}님이 당신과의 관계 등급을 궁금해해요</h2>
    <p class="small">${S.me?'아래 버튼을 누르면 둘의 궁합이 계산돼요.':'내 정보를 넣으면 내 사주 풀이와 함께 둘의 궁합이 계산돼요.'}</p></div>
-   <label class="check"><input type="checkbox" id="invagree" ${S.invAgree?'checked':''}> <span>[필수] ${esc(inv.n)}님과 서로 이름·궁합 점수·칭호·관계 해설을 공유하고, 연결된 다른 지인에게는 가린 이름(김**)과 연결선만 보이는 데 동의합니다. 생년월일시와 성향 응답은 본인만 봅니다.</span></label>
+   <label class="check"><input type="checkbox" id="invagree" ${S.invAgree?'checked':''}> <span>[필수] ${esc(inv.n)}님과 서로 이름·궁합 점수·칭호·관계 해설을 공유하고, 연결된 다른 지인에게는 가린 이름(김**)과 둘 사이 궁합 점수만 보이는 데 동의합니다. 생년월일시와 성향 응답은 본인만 봅니다.</span></label>
    ${S.me?'<button class="btn" data-act="acceptinv">궁합 보고 연결하기</button>':''}</div>`;}
 function scrPair(){
   const f=S.pairObj||S.friends[S.pair];if(!f){S.screen='invite';return scrInvite();}const c=cp(f),deg=(c.score-0)/100*283;
@@ -1872,7 +1872,7 @@ function scrMap(){
   deepIds.forEach(v=>{const A=pos[net.parent[v]],B=pos[v];if(A&&B)tree+=`<line x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}" style="stroke:var(--${CATS[B.cat].c});stroke-opacity:.55;stroke-width:${B.d===2?1.4:1}"/>`;});
   net.edges.forEach(e=>{if(net.parent[e.to]===e.from||net.parent[e.from]===e.to)return;const A=pos[e.from],B=pos[e.to];if(!A||!B)return;nCross++;
     const mx=(A.x+B.x)/2,my=(A.y+B.y)/2,dx=B.x-A.x,dy=B.y-A.y,dl=Math.hypot(dx,dy)||1,qx=mx-dy/dl*dl*.22,qy=my+dx/dl*dl*.22;
-    cross+=`<path d="M${A.x},${A.y} Q${qx},${qy} ${B.x},${B.y}" style="fill:none;stroke:#C9A227;stroke-width:1.6" stroke-dasharray="5 3"/><circle cx="${(mx+qx)/2}" cy="${(my+qy)/2}" r="5.5" style="fill:#E9C46A;stroke:var(--ink);stroke-width:.6"/><text x="${(mx+qx)/2}" y="${(my+qy)/2+2.4}" text-anchor="middle" font-size="6.5" font-weight="700" fill="#1a1a1a">겹</text>`;});
+    cross+=`<path d="M${A.x},${A.y} Q${qx},${qy} ${B.x},${B.y}" style="fill:none;stroke:#C9A227;stroke-width:1.6" stroke-dasharray="5 3"/><circle cx="${(mx+qx)/2}" cy="${(my+qy)/2}" r="${e.score!=null?8:5.5}" style="fill:#E9C46A;stroke:var(--ink);stroke-width:.6"/><text x="${(mx+qx)/2}" y="${(my+qy)/2+2.4}" text-anchor="middle" font-size="6.5" font-weight="700" fill="#1a1a1a">${e.score!=null?e.score:'겹'}</text>`;});
   const bands=Array.from({length:10},(_,k)=>`<circle cx="0" cy="0" r="${rOf(90-k*10)}" style="fill:${k%2?'var(--surface)':'var(--sunk)'};stroke:var(--line);stroke-width:.8" ${k===9?'':'stroke-dasharray="1.5 3"'}/>`).reverse().join('');
   const bandLabels=Array.from({length:10},(_,k)=>{const t=TIERS[9-k],y=-(rOf(100-k*10)+rOf(90-k*10))/2+3;return `<text x="4" y="${y}" font-size="7.2" style="fill:var(--muted)" class="bandlbl">${t.n}</text>`;}).join('');
   const secLbl=S.filter==='all'?order.map((c,k)=>{const am=-Math.PI/2+k*Math.PI*2/3+Math.PI/3;return `<text x="${(R1+12)*Math.cos(am)}" y="${(R1+12)*Math.sin(am)}" text-anchor="middle" font-size="10.5" font-weight="600" style="fill:var(--${CATS[c].c})">${CATS[c].k}</text>`;}).join(''):'';
@@ -1887,9 +1887,10 @@ function scrMap(){
       <g transform="rotate(${-rot}) translate(0,${rr+12})"><rect x="-30" y="-8" width="60" height="13" rx="2" style="fill:var(--ink)"/><text y="1.6" text-anchor="middle" font-size="8.5" font-weight="600" style="fill:var(--surface)">${esc(x.f.name.slice(0,4))} ${x.c.score}</text></g>
     </g>`;}).join('');
   const kidCnt=u=>(kids[u]||[]).length;
-  const deepNodes=deepIds.map(v=>{const p=pos[v],r=NR(p.d),nm=net.name[v]||'?**',col=`var(--${CATS[p.cat].c})`,kc=kidCnt(v);
+  const ES={};net.edges.forEach(e=>{if(e.score!=null&&e.score!==undefined){ES[e.from+'|'+e.to]=e.score;ES[e.to+'|'+e.from]=e.score;}});
+  const deepNodes=deepIds.map(v=>{const p=pos[v],r=NR(p.d),nm=net.name[v]||'?**',col=`var(--${CATS[p.cat].c})`,kc=kidCnt(v),ps=ES[net.parent[v]+'|'+v];
     return `<g class="nnode" transform="translate(${p.x},${p.y})"><circle r="${r}" style="fill:var(--surface);stroke:${col};stroke-width:1.5"/><text y="${r*.36}" text-anchor="middle" font-size="${r*1.02}" font-weight="700" style="fill:var(--ink)">${esc([...nm][0])}</text>
-      <text y="${r+8.5}" text-anchor="middle" font-size="${p.d===2?8:7}" style="fill:var(--muted)">${esc(nm)}${kc?` +${kc}`:''}</text></g>`;}).join('');
+      <text y="${r+8.5}" text-anchor="middle" font-size="${p.d===2?8:7}" style="fill:var(--muted)">${esc(nm)}${ps!=null?` · ${ps}점`:''}${kc?` +${kc}`:''}</text></g>`;}).join('');
   const center=`<g><circle r="24" style="fill:var(--ink)"/><text y="-1" text-anchor="middle" font-size="11" font-weight="700" style="fill:var(--surface)">본인</text><text y="11" text-anchor="middle" font-size="7" style="fill:var(--surface);opacity:.7">주인공</text>
     <path d="M-9 -27 l4 5 l5 -7 l5 7 l4 -5 v8 h-18z" fill="#E9C46A" stroke="#1a1a1a" stroke-width=".8"/></g>`;
   // 처음 보이는 영역: 전체를 담되 너무 작아지지 않게
@@ -1914,10 +1915,10 @@ function scrMap(){
    ${net.more?`<p class="note">${net.more}개의 추가 연결은 표시 한도로 생략했어요.</p>`:''}
    ${list.length?`<div class="distkey"><span>왕관 쪽 = 인간 부적</span><span class="scalebar"><i></i></span><span>바깥쪽 = 스침 최적화</span></div>
    <h3>오늘의 입고 라인업</h3><div class="invrow">${inv}</div>`:`<button class="btn" data-go="invite">초대 링크 보내기</button>`}
-   <p class="note">서로 직접 연결된 사람만 이름과 점수가 보여요. 그 너머는 김** 처럼 성만, 점수는 비공개. 금색 점선은 건너 건너 같은 사람끼리 이어진 연결이에요. 두 손가락이나 휠로 확대, 끌어서 이동.</p></div>
+   <p class="note">서로 직접 연결된 사람만 이름과 점수가 보여요. 그 너머는 김** 처럼 성만 보이고, 옆의 숫자는 그 사람과 바로 위 사람 사이의 궁합 점수예요. 금색 점선 위 숫자도 두 사람 사이 점수. 금색 점선은 건너 건너 같은 사람끼리 이어진 연결이에요. 두 손가락이나 휠로 확대, 끌어서 이동.</p></div>
   ${networkTable()}${list.length?`<div class="card"><h3>사장님 픽 · 소장 추천</h3><div>${sorted.slice(0,3).map((x,k)=>row(x,['金','銀','銅'][k])).join('')}</div>
    ${sorted.length>3?`<h3 style="margin-top:8px">가끔 꺼내 보는 컬렉션</h3><div>${sorted.slice(-Math.min(2,sorted.length-3)).reverse().map(x=>row(x,'↔')).join('')}</div>`:''}</div>`:''}
-  <div class="banner">생년월일시는 누구에게도 공개되지 않아요. 실명·점수는 직접 연결된 사람에게만, 그 밖에는 가린 이름만 보입니다.</div>${foot}`;
+  <div class="banner">생년월일시는 누구에게도 공개되지 않아요. 실명·칭호·해설은 직접 연결된 사람에게만, 그 밖에는 가린 이름과 점수만 보입니다.</div>${foot}`;
 }
 function networkTable(){const net=S.net;if(!net)return '';const direct=S.friends.map((f,i)=>`<tr data-pair="${i}" tabindex="0"><td><b>${esc(f.name)}</b><small>직접 연결</small></td><td>${esc(cp(f).label)}</td><td><strong>${cp(f).score}</strong></td></tr>`).join('');
  const indirect=Object.entries(net.depth).filter(([u,d])=>d>=2).map(([u,d])=>`<tr><td><b>${esc(net.name[u]||'?**')}</b><small>${d}단계 연결</small></td><td class="muted">건너 아는 사이</td><td>—</td></tr>`).join('');
