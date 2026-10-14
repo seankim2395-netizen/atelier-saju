@@ -1518,6 +1518,8 @@ const Store={mode:'off',uid:null,token:null,
   return {links,net:{me:this.uid,depth,parent,name,more:0,edges:all.filter(e=>depth[e.from]!==undefined&&depth[e.to]!==undefined).map(e=>({from:e.from,to:e.to}))}};
  },
  async disconnect(uid){if(this.mode==='supabase')return this.rpc('disconnect',{uid});const d=this._db();for(const [k,e]of Object.entries(d.edges))if([e.from,e.to].includes(this.uid)&&[e.from,e.to].includes(uid))delete d.edges[k];this._save(d);},
+ async recovery(reset){if(this.mode!=='supabase')throw Error('체험 모드에서는 복구 링크를 쓸 수 없어요.');return this.rpc('recovery',{reset:!!reset});},
+ async restore(key){if(this.mode!=='supabase')throw Error('체험 모드에서는 복구 링크를 쓸 수 없어요.');return this.rpc('restore',{key});},
  async wipe(){if(this.mode==='supabase')return this.rpc('wipe');const d=this._db();for(const [k,e]of Object.entries(d.edges))if([e.from,e.to].includes(this.uid))delete d.edges[k];delete d.profiles[this.uid];this._save(d);this.token=null;}
 };
 function inviteLink(cat){if(!Store.token)return '';return location.href.split('#')[0]+'#invite='+encodeURIComponent(Store.token)+'&cat='+cat;}
@@ -1551,11 +1553,17 @@ const inviterObj=u=>inviters().find(f=>f.uid===u)||null;
 function analyzing(){return new Promise(res=>{const el=document.getElementById('loading');if(!el)return res();el.hidden=false;
   const ms=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches?600:1800;setTimeout(()=>{el.hidden=true;res();},ms);});}
 async function boot(){
- try{await Store.init();const p=await Store.getProfile();if(p&&p.date){S.pairs={};S.me=person(raw(p));S.screen='me';S.revisit=true;S.friends=[];await refreshNet();}else{S.me=null;S.friends=[];}
+ try{await Store.init();await handleRestore();const p=await Store.getProfile();if(p&&p.date){S.pairs={};S.me=person(raw(p));S.screen='me';S.revisit=true;S.friends=[];await refreshNet();}else{S.me=null;S.friends=[];}
  const params=new URLSearchParams(location.hash.slice(1));if(params.has('invite')){try{S.invite=await Store.resolve(params.get('invite'),CATS[params.get('cat')]?params.get('cat'):'friend');}catch(e){S.invite=null;S.inviteError=e.message;}}
  }catch(e){Store.mode='error';Store.err=e.message;S.me=null;S.friends=[];S.screen='start';}
  render();
+ if(S.restored)toast('복구했어요. 이제 이 브라우저에서 이어서 볼 수 있어요.');else if(S.restoreError)toast(S.restoreError);
 }
+// 복구 링크(#restore=키)로 들어오면 이 브라우저로 결과를 옮김
+async function handleRestore(){const hp=new URLSearchParams(location.hash.slice(1));if(!hp.has('restore'))return;const key=hp.get('restore');
+ history.replaceState(null,'',location.href.split('#')[0]);
+ try{const cur=await Store.getProfile();if(cur&&cur.date&&!confirm(`이 브라우저에 이미 ${cur.name}님의 결과가 있어요. 지우고 복구 링크의 결과로 바꿀까요?`))return;
+  await Store.restore(key);S.restored=true;}catch(e){S.restoreError=(e&&e.message)||'복구하지 못했어요.';}}
 // 원점수(사주 40% + 성향 60%) → 0~100. 기존 등급 구간을 유지한 재미용 환산이며 검증된 궁합 지표가 아님.
 const SCORE_KNOTS=[[50.8,0],[57.8,10],[62.0,20],[65.0,30],[67.6,40],[69.8,50],[72.4,60],[75.0,70],[78.2,80],[81.8,90],[88.4,100]];
 function rawToScore(r){const K=SCORE_KNOTS;if(r<=K[0][0])return 0;if(r>=K[K.length-1][0])return 100;
@@ -1718,7 +1726,7 @@ function scrMe(){
    <h2 style="margin-top:4px">${cur.t}</h2>
    ${open?secHTML(cur):lockBox(secHTML(cur),`${cur.t} 해설 ${cur.items.filter(v=>typeof v==='string'||v.b||v.html).length}개 항목과 지인 3명 궁합은 990원 이용권에서 열립니다.`,'990원으로 전체 해설 보기')}</div>
   ${S.plan>0?b5card:lockBox(b5card,'성향 분석과 사주 결합 해석','990원으로 보기')}
-  <div class="card"><h2>내 사람들과의 결 보기</h2><p class="muted small">초대 링크를 보내면 지인은 자기 사주를 보고, 둘의 궁합 점수가 결 지도에 이어집니다.</p><button class="btn" data-go="invite">초대 링크 보내기</button></div>${foot}`;
+  <div class="card"><h2>내 사람들과의 결 보기</h2><p class="muted small">초대 링크를 보내면 지인은 자기 사주를 보고, 둘의 궁합 점수가 결 지도에 이어집니다.</p><button class="btn" data-go="invite">초대 링크 보내기</button></div>${S.demo?'':`<div class="banner">이 결과는 <b>지금 쓰는 기기·브라우저</b>에 묶여 저장돼요. 같은 브라우저로 이 주소에 다시 오면 그대로 열려요. 카톡에서 열었다면 다음에도 카톡에서 여세요. 다른 기기나 브라우저에서 보려면 <button class="chip" data-go="invite">지인 탭 › 내 정보 관리</button>에서 복구 링크를 만들어 두세요.</div>`}${foot}`;
 }
 function timeSel(pre,v){const [h,m]=(v.time||'').split(':').map(Number);const has=!isNaN(h);const ap=has?(h<12?'am':'pm'):'';const h12=has?((h%12)||12):'';const dis=v.noTime?'disabled':'';
  return `<div class="tsel"><select id="${pre}-ap" aria-label="오전 오후" ${dis}><option value="">오전/오후</option><option value="am" ${ap==='am'?'selected':''}>오전</option><option value="pm" ${ap==='pm'?'selected':''}>오후</option></select>
@@ -1812,6 +1820,8 @@ ${link}`;
    <div class="plist">${invs.map(f=>`<button class="pitem" data-inv="${esc(f.uid)}">${avatar(f)}<div><b>${esc(f.name)}</b> <span class="tag cat-${CATS[f.cat].c}">${CATS[f.cat].k}</span><br><span class="small muted">${esc(f.edge.label||'')}</span></div><span class="score">${f.edge.score}<small>점</small></span></button>`).join('')}</div>
    <p class="note">나를 초대한 사람도 직접 연결된 지인으로 지도에 표시됩니다.</p></div>`:''}
   <div class="card"><h3>내 정보 관리</h3><p class="small muted">생년월일시와 성향 응답은 나만 볼 수 있어요. 직접 연결된 사람에게는 이름·궁합 점수·칭호·관계 해설, 간접 연결된 사람에게는 가린 이름과 연결선만 보입니다.</p>
+   <h3 style="margin-top:16px">다른 기기에서 이어 보기</h3><p class="small muted">결과는 지금 쓰는 기기·브라우저에 묶여 있어요. 같은 브라우저로 이 주소에 다시 오면 그대로 열리고, 카톡에서 처음 열었다면 다음에도 카톡에서 열어야 해요. 폰을 바꾸거나 다른 브라우저에서 보려면 복구 링크를 만들어 나만 보는 곳에 저장해 두세요.</p>
+   ${Store.mode!=='supabase'?'<p class="note">복구 링크는 서버에 연결된 상태(ONLINE)에서만 만들 수 있어요.</p>':S.recLink?`<textarea id="reclink" class="code" readonly rows="2">${esc(S.recLink)}</textarea><div class="row" style="flex-wrap:nowrap"><button class="btn" data-act="reccopy" style="flex:1">복구 링크 복사</button><button class="btn quiet" data-act="recreset" style="flex:1">새로 만들기</button></div><p class="note">이 링크를 가진 사람은 누구나 내 결과를 열 수 있어요. 카톡 ‘나와의 채팅’처럼 나만 보는 곳에 저장하세요. 새로 만들면 예전 링크는 바로 무효가 됩니다. 다른 기기에서 복구하면 결과가 그 기기로 옮겨지고, 이 기기에서는 처음 화면이 나와요.</p>`:'<button class="btn quiet" data-act="recmake">복구 링크 만들기</button>'}
    ${S.wipeAsk?`<div class="confirm"><p>내 정보와 모든 연결을 지울까요? 되돌릴 수 없습니다.</p><div class="row"><button class="btn quiet" data-act="wipeno" style="flex:1">취소</button><button class="btn" data-act="wipeyes" style="flex:1">모두 지우기</button></div></div>`:'<button class="btn quiet" data-act="wipe">내 정보와 연결 모두 지우기</button>'}</div>
   ${foot}`;
 }
@@ -2081,9 +2091,11 @@ document.addEventListener('click',async e=>{
     case 'acceptinv':{if(!S.invAgree){toast('초대 동의 항목에 체크해 주세요.');break;}try{await linkInviter();await refreshNet();S.pairObj=inviterObj(S.invite.u);S.screen=S.pairObj?'pair':'me';history.replaceState(null,'',location.href.split('#')[0]);S.invite=null;render();scrollTo(0,0);toast('연결됐어요.');}catch(e){console.error(e);toast('연결하지 못했어요. 잠시 후 다시 해 주세요.');}break;}
     case 'copyinv':{const t=document.getElementById('invmsg');try{await navigator.clipboard.writeText(t.value);toast('초대 메시지를 복사했어요. 카톡에 붙여 넣어 보내세요.');}catch(_){t.select();toast('메시지를 선택했어요. 길게 눌러 복사하세요.');}break;}
     case 'shareinv':{try{await navigator.share({title:'아뜰리에 사주(성수점) · 궁합',text:document.getElementById('invmsg').value});}catch(_){}break;}
+    case 'recmake':case 'recreset':{if(d.act==='recreset'&&!confirm('새로 만들면 예전 복구 링크는 더 이상 쓸 수 없어요. 계속할까요?'))break;try{const r=await Store.recovery(d.act==='recreset');S.recLink=location.href.split('#')[0].split('?')[0]+'#restore='+r.key;render();toast(d.act==='recreset'?'새 복구 링크를 만들었어요. 예전 링크는 이제 안 열려요.':'복구 링크를 만들었어요.');}catch(e){toast((e&&e.message)||'만들지 못했어요.');}break;}
+    case 'reccopy':{const t=document.getElementById('reclink');try{await navigator.clipboard.writeText(t.value);toast('복구 링크를 복사했어요. 나와의 채팅에 저장해 두세요.');}catch(_){t.select();toast('링크를 선택했어요. 길게 눌러 복사하세요.');}break;}
     case 'wipe':S.wipeAsk=true;render();break;
     case 'wipeno':S.wipeAsk=false;render();break;
-    case 'wipeyes':{try{await Store.wipe();S.wipeAsk=false;S.me=null;S.friends=[];S.net=null;S.pairs={};S.screen='start';W.step=0;S.step=1;render();toast('내 정보와 연결을 삭제했어요.');}catch(e){toast('삭제 실패: '+e.message);}break;}
+    case 'wipeyes':{try{await Store.wipe();S.recLink=null;S.wipeAsk=false;S.me=null;S.friends=[];S.net=null;S.pairs={};S.screen='start';W.step=0;S.step=1;render();toast('내 정보와 연결을 삭제했어요.');}catch(e){toast('삭제 실패: '+e.message);}break;}
     case 'copy':{const inp=document.getElementById('lnk');try{await navigator.clipboard.writeText(inp.value);toast('링크를 복사했어요.');}catch(_){inp.select();toast('링크를 선택했어요. 길게 눌러 복사하세요.');}break;}
     case 'send':S.recv={step:'invite',scope:'all',agree:false,form:null};S.screen='recv';render();scrollTo(0,0);break;
     case 'decline':toast(`거절했어요. ${S.me.name}님에게는 "응답하지 않음"으로만 표시됩니다.`);S.screen='invite';render();break;
